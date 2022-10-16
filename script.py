@@ -1,9 +1,19 @@
 from pathlib import Path
-from geopy.geocoders import Nominatim
-import requests
-import pandas as pd
 
-def get_forecast( city='Pittsburgh' ):
+import pandas as pd
+import requests
+from geopy.geocoders import Nominatim
+
+
+class CityNotFoundError(Exception):
+    pass
+
+
+class ForecastUnavailable(Exception):
+    pass
+
+
+def get_forecast(city='Pittsburgh'):
     '''
     Returns the nightly's forecast for a given city.
 
@@ -22,7 +32,35 @@ def get_forecast( city='Pittsburgh' ):
     * Return the period that is labeled as "Tonight"
     '''
 
-    raise NotImplementedError()
+    # Create geocoder
+    geo_coder = Nominatim(user_agent="get-forecast")
+
+    # Check if city exists and got longitude/latitude
+    location = geo_coder.geocode(city)
+    if not location or not location.latitude or not location.longitude:
+        raise CityNotFoundError(f"{city} is not found!")
+    
+    # Use api.weather.gov for weather forecasting
+    # https://www.weather.gov/documentation/services-web-api
+    points_url = f"https://api.weather.gov/points/{location.latitude},{location.longitude}"
+    response_json = requests.get(points_url).json()
+    forecast_url = response_json["properties"]["forecast"]
+    response_json = requests.get(forecast_url).json()
+
+    periods = response_json["properties"]["periods"]
+
+    # Get weather forecast for tonight
+    tonight = None
+    for period in periods:
+        if period["name"] == "Tonight":
+            tonight = period
+            break
+
+    if not tonight:
+        raise ForecastUnavailable(f"Tonight's forecast for {city} is not available!")
+
+    return tonight
+
 
 def main():
     period = get_forecast()
@@ -30,7 +68,7 @@ def main():
     file = 'weather.pkl'
 
     if Path(file).exists():
-        df = pd.read_pickle( file )
+        df = pd.read_pickle(file)
     else:
         df = pd.DataFrame(columns=['Start Date', 'End Date', 'Forecast'])
 
@@ -40,8 +78,8 @@ def main():
 
     #sort repositories
     file = open("README.md", "w")
-    file.write('![Status](https://github.com/icaoberg/python-get-forecast/actions/workflows/build.yml/badge.svg)\n')
-    file.write('![Status](https://github.com/icaoberg/python-get-forecast/actions/workflows/pretty.yml/badge.svg)\n')
+    file.write('![Status](https://github.com/khionech/python-get-forecast/actions/workflows/build.yml/badge.svg)\n')
+    file.write('![Status](https://github.com/khionech/python-get-forecast/actions/workflows/pretty.yml/badge.svg)\n')
     file.write('# Pittsburgh Nightly Forecast\n\n')
     
     file.write(df.to_markdown(tablefmt='github'))
